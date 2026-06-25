@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Team Working Hours — Timezone View</title>
+<style>
+  :root {
+    --bg: #0f1320;
+    --panel: #171c2e;
+    --grid: #262d44;
+    --grid-soft: #1d2336;
+    --text: #e7ebf5;
+    --muted: #9aa3bd;
+    --accent: #5b8cff;
+    --block: #5b8cff;
+    --block2: #7c5bff;
+    --now: #ff5b73;
+    --good: #46d39a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    padding: 28px;
+  }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+  .controls {
+    display: flex; flex-wrap: wrap; gap: 14px; align-items: center;
+    background: var(--panel); padding: 14px 18px; border-radius: 12px; margin-bottom: 22px;
+  }
+  .controls label { font-size: 13px; color: var(--muted); margin-right: 6px; }
+  select, button {
+    background: var(--grid); color: var(--text); border: 1px solid #333c5c;
+    border-radius: 8px; padding: 8px 12px; font-size: 14px; cursor: pointer;
+  }
+  .legend { display: flex; gap: 16px; font-size: 12px; color: var(--muted); margin-left: auto; flex-wrap: wrap; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .swatch { width: 14px; height: 14px; border-radius: 3px; display: inline-block; }
+  .chart { background: var(--panel); border-radius: 12px; padding: 18px 18px 8px; overflow-x: auto; }
+  .grid-wrap { min-width: 920px; }
+  .hours-row { display: grid; grid-template-columns: 200px 1fr; align-items: end; margin-bottom: 6px; }
+  .hours-axis { display: grid; grid-template-columns: repeat(24, 1fr); font-size: 10px; color: var(--muted); }
+  .hours-axis div { text-align: left; border-left: 1px solid var(--grid-soft); padding: 2px 0 4px 3px; }
+  .row { display: grid; grid-template-columns: 200px 1fr; align-items: center; height: 46px; }
+  .person { padding-right: 14px; }
+  .person .name { font-size: 14px; font-weight: 600; }
+  .person .meta { font-size: 11px; color: var(--muted); }
+  .track {
+    position: relative; height: 30px; border-radius: 6px;
+    background:
+      repeating-linear-gradient(to right, var(--grid-soft) 0, var(--grid-soft) 1px, transparent 1px, transparent calc(100%/24));
+    background-color: #11162400;
+  }
+  .track::after { content:""; position:absolute; inset:0; border-radius:6px; box-shadow: inset 0 0 0 1px var(--grid-soft); pointer-events:none;}
+  .block {
+    position: absolute; top: 4px; height: 22px; border-radius: 5px;
+    background: linear-gradient(180deg, var(--block), #4571e0);
+    box-shadow: 0 1px 4px rgba(0,0,0,.4);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; color: #fff; white-space: nowrap; overflow: hidden;
+  }
+  .block.alt { background: linear-gradient(180deg, var(--block2), #6344d8); }
+  .self .block { background: linear-gradient(180deg, var(--good), #2fae7d); }
+  .nowline { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--now); z-index: 5; }
+  .nowline::after { content:"now"; position:absolute; top:-14px; left:-9px; font-size:9px; color:var(--now); }
+  .overlap-row { display: grid; grid-template-columns: 200px 1fr; align-items: center; height: 40px; margin-top: 10px; border-top: 1px solid var(--grid); padding-top: 8px;}
+  .overlap-label { font-size: 12px; color: var(--muted); padding-right: 14px; }
+  .overlap-track { display: grid; grid-template-columns: repeat(24, 1fr); gap: 1px; height: 26px; }
+  .ov-cell { border-radius: 3px; display:flex; align-items:center; justify-content:center; font-size:9px; color:#fff; background:#1b2236; }
+  .footnote { color: var(--muted); font-size: 11px; margin-top: 16px; line-height: 1.5; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+  .tab { background: var(--panel); color: var(--muted); border: 1px solid var(--grid);
+         padding: 9px 18px; border-radius: 9px; cursor: pointer; font-size: 14px; }
+  .tab.active { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
+  .roster { background: var(--panel); border-radius: 12px; padding: 8px 4px; overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; min-width: 720px; }
+  th, td { text-align: left; padding: 13px 18px; font-size: 14px; border-bottom: 1px solid var(--grid); }
+  th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  tbody tr:last-child td { border-bottom: none; }
+  td .role-dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:8px; vertical-align:middle; }
+  td.shift { font-variant-numeric: tabular-nums; }
+  td.none { color: var(--muted); }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+  <h1>Team Working Hours Across Timezones</h1>
+  <div class="sub">Implementation team — plotted on a 24-hour clock. Switch the reference timezone to see everyone's hours from any location's point of view. (DST as of 25 Jun 2026.)</div>
+
+  <div class="controls">
+    <div>
+      <label for="tz">View in timezone:</label>
+      <select id="tz"></select>
+    </div>
+    <div id="clock" style="font-size:14px;font-weight:600;color:var(--now);min-width:170px;"></div>
+    <div class="legend">
+      <span><i class="swatch" style="background:#2fae7d"></i> Team Lead</span>
+      <span><i class="swatch" style="background:#4571e0"></i> Project Manager</span>
+      <span><i class="swatch" style="background:#7c5bff"></i> Implementation Consultant</span>
+      <span><i class="swatch" style="background:var(--now)"></i> Current time</span>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" id="tabChart">Timeline chart</div>
+    <div class="tab" id="tabList">Team list</div>
+  </div>
+
+  <div class="roster hidden" id="rosterPanel">
+    <table>
+      <thead>
+        <tr><th>Name</th><th>Job title</th><th>Location</th><th>Shift 1 (local)</th><th>Shift 2 (local)</th></tr>
+      </thead>
+      <tbody id="rosterBody"></tbody>
+    </table>
+  </div>
+
+  <div class="chart" id="chartPanel">
+    <div class="grid-wrap">
+      <div class="hours-row">
+        <div></div>
+        <div class="hours-axis" id="axis"></div>
+      </div>
+      <div id="rows"></div>
+      <div class="overlap-row">
+        <div class="overlap-label">People online<br><span style="font-size:10px">(count per hour)</span></div>
+        <div class="overlap-track" id="overlap"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footnote" id="foot"></div>
+
+<script>
+// Each person: offset = hours ahead of UTC (June 2026). shifts in LOCAL decimal hours; values may exceed 24 to denote past-midnight.
+const TEAM = [
+  { name:"Ben Heath",     role:"Team Lead",                 city:"London",     tzLabel:"BST",  offset:1,   shifts:[[9,17]],            self:true },
+  { name:"Avadhut Pujari",role:"Project Manager",           city:"New Delhi",  tzLabel:"IST",  offset:5.5, shifts:[[10,18]] },
+  { name:"Matt Neal",     role:"Project Manager",           city:"New York",   tzLabel:"EDT",  offset:-4,  shifts:[[6,10],[19,23]] },
+  { name:"Uzair Fazal",   role:"Implementation Consultant", city:"Karachi",    tzLabel:"PKT",  offset:5,   shifts:[[16,24]] },
+  { name:"Bryan Factor",  role:"Implementation Consultant", city:"Luzon",      tzLabel:"PHT",  offset:8,   shifts:[[10,14],[18,22]] },
+  { name:"Ammar Vahidy",  role:"Implementation Consultant", city:"Karachi",    tzLabel:"PKT",  offset:5,   shifts:[[15,23]] },
+  { name:"Jawwad Ashraf", role:"Implementation Consultant", city:"Karachi",    tzLabel:"PKT",  offset:5,   shifts:[[12,22]] },
+];
+
+const ZONES = [
+  { label:"London — BST (UTC+1)",      offset:1 },
+  { label:"New York — EDT (UTC-4)",    offset:-4 },
+  { label:"New Delhi — IST (UTC+5:30)",offset:5.5 },
+  { label:"Karachi — PKT (UTC+5)",     offset:5 },
+  { label:"Luzon — PHT (UTC+8)",       offset:8 },
+  { label:"UTC (UTC+0)",               offset:0 },
+];
+
+// Colour by job role: [top, bottom] gradient stops
+const ROLE_COLORS = {
+  "Team Lead":                 ["#46d39a", "#2fae7d"],
+  "Project Manager":           ["#5b8cff", "#4571e0"],
+  "Implementation Consultant": ["#7c5bff", "#6344d8"],
+};
+
+let refOffset = 1;     // default BST
+let showNow = true;    // now line always on
+
+const fmt = h => {
+  h = ((h % 24) + 24) % 24;
+  const hh = Math.floor(h);
+  const mm = Math.round((h - hh) * 60);
+  const ap = hh < 12 ? "am" : "pm";
+  let disp = hh % 12; if (disp === 0) disp = 12;
+  return mm ? `${disp}:${String(mm).padStart(2,'0')}${ap}` : `${disp}${ap}`;
+};
+
+// Convert a person's local hour to the reference zone, returns decimal hours (can be <0 or >24)
+const toRef = (localHour, personOffset) => localHour - personOffset + refOffset;
+
+// Split a [start,end] range (in ref hours) into visible segments within 0..24, wrapping across midnight.
+function segments(start, end) {
+  const segs = [];
+  let s = start, e = end;
+  // normalise so s in [0,24)
+  while (s < 0) { s += 24; e += 24; }
+  while (s >= 24) { s -= 24; e -= 24; }
+  // now s in [0,24); e may exceed 24
+  while (e > s) {
+    const segEnd = Math.min(e, 24);
+    segs.push([s, segEnd]);
+    if (e > 24) { s = 0; e -= 24; } else break;
+  }
+  return segs;
+}
+
+function buildAxis() {
+  const axis = document.getElementById("axis");
+  axis.innerHTML = "";
+  for (let h = 0; h < 24; h++) {
+    const d = document.createElement("div");
+    d.textContent = (h % 3 === 0) ? (h === 0 ? "12a" : h < 12 ? h+"a" : (h===12?"12p":(h-12)+"p")) : "";
+    axis.appendChild(d);
+  }
+}
+
+function render() {
+  const rows = document.getElementById("rows");
+  rows.innerHTML = "";
+  const coverage = new Array(24).fill(0); // fractional people per hour
+
+  TEAM.forEach(p => {
+    const row = document.createElement("div");
+    row.className = "row" + (p.self ? " self" : "");
+    const refShifts = [];
+    p.shifts.forEach((sh, i) => {
+      const s = toRef(sh[0], p.offset);
+      const e = toRef(sh[1], p.offset);
+      segments(s, e).forEach(seg => refShifts.push({ seg, alt: i > 0 }));
+    });
+
+    // local label
+    const localStr = p.shifts.map(sh => `${fmt(sh[0])}–${fmt(sh[1])}`).join(", ");
+    // ref label (recompute from raw, not segmented, for readability)
+    const refStr = p.shifts.map(sh => `${fmt(toRef(sh[0],p.offset))}–${fmt(toRef(sh[1],p.offset))}`).join(", ");
+
+    const person = document.createElement("div");
+    person.className = "person";
+    person.innerHTML = `<div class="name">${p.name}</div>
+      <div class="meta">${p.city} (${p.tzLabel}) · local ${localStr}</div>`;
+    row.appendChild(person);
+
+    const track = document.createElement("div");
+    track.className = "track";
+    track.title = `${p.name} — ${refStr} in view zone`;
+
+    refShifts.forEach(({seg, alt}) => {
+      const [s, e] = seg;
+      const b = document.createElement("div");
+      b.className = "block";
+      const col = ROLE_COLORS[p.role] || ["#5b8cff","#4571e0"];
+      b.style.background = `linear-gradient(180deg, ${col[0]}, ${col[1]})`;
+      if (alt) b.style.opacity = "0.78";
+      b.style.left = (s/24*100) + "%";
+      b.style.width = ((e-s)/24*100) + "%";
+      if ((e - s) >= 2) b.textContent = `${fmt(s)}–${fmt(e)}`;
+      track.appendChild(b);
+      // accumulate coverage
+      for (let h = Math.floor(s); h < Math.ceil(e); h++) {
+        const lo = Math.max(s, h), hi = Math.min(e, h+1);
+        if (hi > lo) coverage[h % 24] += (hi - lo);
+      }
+    });
+
+    if (showNow) {
+      const now = new Date();
+      const utcH = now.getUTCHours() + now.getUTCMinutes()/60;
+      let refNow = (utcH + refOffset) % 24; if (refNow < 0) refNow += 24;
+      const nl = document.createElement("div");
+      nl.className = "nowline";
+      nl.style.left = (refNow/24*100) + "%";
+      track.appendChild(nl);
+    }
+
+    row.appendChild(track);
+    rows.appendChild(row);
+  });
+
+  // overlap row
+  const ov = document.getElementById("overlap");
+  ov.innerHTML = "";
+  const maxC = Math.max(...coverage, 1);
+  for (let h = 0; h < 24; h++) {
+    const c = Math.round(coverage[h]);
+    const cell = document.createElement("div");
+    cell.className = "ov-cell";
+    const intensity = coverage[h] / maxC;
+    cell.style.background = c === 0 ? "#1b2236"
+      : `rgba(70,211,154,${0.18 + intensity*0.7})`;
+    cell.textContent = c > 0 ? c : "";
+    cell.title = `${fmt(h)}: ${c} online`;
+    ov.appendChild(cell);
+  }
+
+  document.getElementById("foot").innerHTML =
+    `Reference zone: <b>${ZONES.find(z=>z.offset===refOffset)?.label || refOffset}</b>. ` +
+    `Blocks show each person's working hours converted into the selected zone; split shifts shown as two blocks. ` +
+    `Overnight shifts wrap across midnight. "People online" counts overlapping working hours per hour of the day.`;
+}
+
+// init
+const tzSel = document.getElementById("tz");
+ZONES.forEach(z => {
+  const o = document.createElement("option");
+  o.value = z.offset; o.textContent = z.label;
+  if (z.offset === 1) o.selected = true;
+  tzSel.appendChild(o);
+});
+tzSel.addEventListener("change", e => { refOffset = parseFloat(e.target.value); render(); updateClock(); });
+
+function updateClock() {
+  const now = new Date();
+  const utcSec = now.getUTCHours()*3600 + now.getUTCMinutes()*60 + now.getUTCSeconds();
+  let t = (utcSec + refOffset*3600) % 86400; if (t < 0) t += 86400;
+  const hh = Math.floor(t/3600), mm = Math.floor((t%3600)/60), ss = Math.floor(t%60);
+  const ap = hh < 12 ? "AM" : "PM"; let d = hh % 12 || 12;
+  const zone = ZONES.find(z => z.offset === refOffset);
+  const label = zone ? zone.label.split(" — ")[1].replace(/\(.*\)/,"").trim() : "";
+  document.getElementById("clock").textContent =
+    `🕒 ${d}:${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')} ${ap} ${label}`;
+}
+
+function buildRoster() {
+  const body = document.getElementById("rosterBody");
+  body.innerHTML = "";
+  TEAM.forEach(p => {
+    const col = (ROLE_COLORS[p.role] || ["#5b8cff"])[0];
+    const s1 = p.shifts[0] ? `${fmt(p.shifts[0][0])} – ${fmt(p.shifts[0][1])}` : "";
+    const s2 = p.shifts[1] ? `${fmt(p.shifts[1][0])} – ${fmt(p.shifts[1][1])}` : "—";
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      `<td><span class="role-dot" style="background:${col}"></span><b>${p.name}</b></td>` +
+      `<td>${p.role}</td>` +
+      `<td>${p.city} (${p.tzLabel})</td>` +
+      `<td class="shift">${s1}</td>` +
+      `<td class="shift${p.shifts[1] ? "" : " none"}">${s2}</td>`;
+    body.appendChild(tr);
+  });
+}
+
+const tabChart = document.getElementById("tabChart");
+const tabList  = document.getElementById("tabList");
+const chartPanel = document.getElementById("chartPanel");
+const rosterPanel = document.getElementById("rosterPanel");
+tabChart.addEventListener("click", () => {
+  tabChart.classList.add("active"); tabList.classList.remove("active");
+  chartPanel.classList.remove("hidden"); rosterPanel.classList.add("hidden");
+});
+tabList.addEventListener("click", () => {
+  tabList.classList.add("active"); tabChart.classList.remove("active");
+  rosterPanel.classList.remove("hidden"); chartPanel.classList.add("hidden");
+});
+
+buildAxis();
+buildRoster();
+render();
+updateClock();
+setInterval(() => { updateClock(); render(); }, 1000);
+</script>
+</body>
+</html>
